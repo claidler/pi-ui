@@ -3,7 +3,7 @@
   import ChatInput from '$lib/components/ChatInput.svelte';
   import MessageList from '$lib/components/MessageList.svelte';
   import SessionList from '$lib/components/SessionList.svelte';
-  import { sendMessageToHermes } from '$lib/services/hermes';
+  import { sendMessageToHermes, streamMessageFromHermes } from '$lib/services/hermes';
   import ModelSelector from '$lib/components/ModelSelector.svelte';
   let sessions = $state([
     { id: 1, name: "Refactor auth module", model: "claude-3.5-sonnet", status: "thinking" },
@@ -50,20 +50,32 @@
     newMessage = "";
     isProcessing = true;
 
-    try {
-      const response = await sendMessageToHermes(
-        messages.map(m => ({ role: m.role as any, content: m.content })),
-        { model: currentModel }
-      );
+    // Start with an empty assistant message that we'll stream into
+    const assistantIndex = messages.length;
+    messages = [...messages, { role: "agent", content: "" }];
 
-      const assistantMessage = response.choices?.[0]?.message?.content || "No response from agent.";
-      messages = [...messages, { role: "agent", content: assistantMessage }];
+    try {
+      let fullResponse = "";
+      
+      for await (const chunk of streamMessageFromHermes(
+        messages.slice(0, -1).map(m => ({ role: m.role as any, content: m.content })),
+        { model: currentModel }
+      )) {
+        const delta = chunk.choices?.[0]?.delta?.content || "";
+        if (delta) {
+          fullResponse += delta;
+          // Update the last message in place
+          messages[assistantIndex] = { role: "agent", content: fullResponse };
+          messages = [...messages]; // trigger reactivity
+        }
+      }
     } catch (error) {
-      console.error("Hermes error:", error);
-      messages = [...messages, { 
+      console.error("Hermes streaming error:", error);
+      messages[assistantIndex] = { 
         role: "agent", 
         content: "Sorry, I couldn't reach the agent. Please check if Hermes is running." 
-      }];
+      };
+      messages = [...messages];
     } finally {
       isProcessing = false;
       scrollToBottom();
