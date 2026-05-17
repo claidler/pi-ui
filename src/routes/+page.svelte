@@ -3,7 +3,14 @@
   import MessageList from '$lib/components/MessageList.svelte';
   import SessionList from '$lib/components/SessionList.svelte';
   import ModelSelector from '$lib/components/ModelSelector.svelte';
+  import WorkspacePicker from '$lib/components/WorkspacePicker.svelte';
   import { piWs } from '$lib/services/pi-ws';
+  import {
+    getWorkspaceHome,
+    repairLegacyWorkspacePath,
+    resolveWorkspace,
+    setWorkspaceHome
+  } from '$lib/workspace';
 
   interface Session {
     id: string;
@@ -22,13 +29,33 @@
     toolName?: string;
   }
 
-  let sessions = $state<Session[]>([]);
+  let groups = $state<Record<string, Session[]>>({});
   let activeSessionId = $state<string | null>(null);
-  let activeSession = $derived(sessions.find(s => s.id === activeSessionId));
+  const WORKSPACE_STORAGE_KEY = 'pi-ui:workspace';
+  function getSavedWorkspace(): string {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(WORKSPACE_STORAGE_KEY);
+      if (saved) return repairLegacyWorkspacePath(saved);
+    }
+    return getWorkspaceHome();
+  }
+  let activeWorkspace = $state<string>(getSavedWorkspace());
+  let workspaceSuggestions = $derived(Object.keys(groups));
+  let allSessions = $derived(Object.values(groups).flat());
+  let activeSession = $derived(allSessions.find(s => s.id === activeSessionId));
+  let sessionCount = $derived(allSessions.length);
 
   let messages = $state<Msg[]>([]);
   let newMessage = $state("");
-  let currentModel = $state("github-copilot/claude-sonnet-4.5");
+  const MODEL_STORAGE_KEY = 'pi-ui:selected-model';
+  function getSavedModel(): string {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(MODEL_STORAGE_KEY);
+      if (saved) return saved;
+    }
+    return 'github-copilot/claude-sonnet-4.5';
+  }
+  let currentModel = $state(getSavedModel());
   let showSessionsModal = $state(false);
   let isProcessing = $state(false);
   let showScrollButton = $state(false);
@@ -42,9 +69,9 @@
     try {
       const res = await fetch('/api/sessions');
       const data = await res.json();
-      sessions = data.sessions || [];
-      if (sessions.length > 0 && !activeSessionId) {
-        selectSession(sessions[0].id);
+      groups = data.groups || {};
+      if (allSessions.length > 0 && !activeSessionId) {
+        selectSession(allSessions[0].id);
       }
     } catch (err) {
       console.error('Failed to load sessions:', err);
@@ -56,7 +83,7 @@
   async function loadMessages(sessionId: string) {
     loadingMessages = true;
     try {
-      const session = sessions.find(s => s.id === sessionId);
+      const session = allSessions.find(s => s.id === sessionId);
       if (!session) return;
       if (!session.path) {
         messages = [];
@@ -76,8 +103,28 @@
   function selectSession(id: string) {
     activeSessionId = id;
     showSessionsModal = false;
+    const session = allSessions.find(s => s.id === id);
+    if (session?.workspace) {
+      setWorkspace(session.workspace);
+    }
     loadMessages(id);
     setTimeout(scrollToBottom, 100);
+  }
+
+  function setWorkspace(workspace: string) {
+    activeWorkspace = resolveWorkspace(workspace);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(WORKSPACE_STORAGE_KEY, activeWorkspace);
+    }
+    const session = allSessions.find(s => s.id === activeSessionId);
+    if (session && !session.path) {
+      session.workspace = activeWorkspace;
+      groups = groups;
+    }
+  }
+
+  function selectWorkspace(workspace: string) {
+    setWorkspace(workspace);
   }
 
   async function sendMessage() {
@@ -89,9 +136,10 @@
     isProcessing = true;
     currentStreamingMessage = "";
 
-    piWs.sendPrompt(userMessage, { 
+    piWs.sendPrompt(userMessage, {
       model: currentModel,
-      sessionId: activeSessionId 
+      sessionId: activeSessionId ?? undefined,
+      cwd: activeWorkspace
     });
   }
 
@@ -106,16 +154,18 @@
 
   function createNewSession() {
     const newId = crypto.randomUUID();
-    sessions.unshift({
+    const ws = resolveWorkspace(activeWorkspace);
+    if (!groups[ws]) groups[ws] = [];
+    groups[ws].unshift({
       id: newId,
       name: "New session",
       path: '',
-      workspace: '',
+      workspace: ws,
       model: currentModel,
       status: "idle",
       createdAt: new Date().toISOString()
     });
-    sessions = sessions;
+    groups = groups;
     selectSession(newId);
   }
 
@@ -155,9 +205,25 @@
     }
   });
 
+  // Persist model selection to localStorage
+  $effect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(MODEL_STORAGE_KEY, currentModel);
+    }
+  });
+
   // Load sessions on mount
   $effect(() => {
     loadSessions();
+  });
+
+  $effect(() => {
+    fetch('/api/workspace')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.home) setWorkspaceHome(data.home);
+      })
+      .catch(() => {});
   });
 
   // WebSocket streaming handlers
@@ -238,7 +304,7 @@
         </div>
         <div>
           <div class="font-semibold text-xl">pi-ui</div>
-          <div class="text-xs text-zinc-500">{sessions.length} sessions</div>
+          <div class="text-xs text-zinc-500">{sessionCount} sessions</div>
         </div>
       </div>
       <button onclick={createNewSession} class="px-3 py-1.5 text-sm bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 rounded-2xl flex items-center gap-2">
@@ -259,13 +325,15 @@
           <div class="w-5 h-5 border-2 border-zinc-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-2"></div>
           Loading sessions…
         </div>
-      {:else if sessions.length === 0}
+      {:else if sessionCount === 0}
         <div class="px-4 py-8 text-center text-sm text-zinc-400">No sessions found</div>
       {:else}
         <SessionList
-          {sessions}
+          {groups}
           {activeSessionId}
+          {activeWorkspace}
           onSelect={selectSession}
+          onWorkspaceSelect={selectWorkspace}
         />
       {/if}
     </div>
@@ -282,9 +350,15 @@
           </button>
           <div class="min-w-0">
             <div class="font-semibold truncate">{activeSession.name}</div>
-            <div class="flex items-center gap-2 text-xs text-zinc-500">
-              <span class="truncate">{activeSession.workspace}</span>
-              <span>• {activeSession.status}</span>
+            <div class="flex items-center gap-1.5 text-xs text-zinc-500 min-w-0">
+              <i class="fa-solid fa-folder text-[10px] text-zinc-400 flex-shrink-0" aria-hidden="true"></i>
+              <WorkspacePicker
+                bind:value={activeWorkspace}
+                suggestions={workspaceSuggestions}
+                sessionWorkspace={activeSession.path ? activeSession.workspace : undefined}
+                onChange={setWorkspace}
+              />
+              <span class="flex-shrink-0">• {activeSession.status}</span>
             </div>
           </div>
         </div>
@@ -310,6 +384,7 @@
           {handleScroll}
           bind:messagesContainer
           {currentStreamingMessage}
+          {isProcessing}
         />
       {/if}
 
@@ -339,9 +414,11 @@
         <div class="py-8 text-center text-sm text-zinc-400">Loading…</div>
       {:else}
         <SessionList
-          {sessions}
+          {groups}
           {activeSessionId}
+          {activeWorkspace}
           onSelect={selectSession}
+          onWorkspaceSelect={selectWorkspace}
         />
       {/if}
     </div>

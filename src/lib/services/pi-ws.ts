@@ -25,6 +25,8 @@ export class PiWebSocketClient {
         const msg = JSON.parse(event.data);
         if (msg.type === 'stream' && msg.data) {
           this.handlePiEvent(msg.data);
+        } else if (msg.type === 'models-list') {
+          this.emit('models', msg.models);
         }
       } catch {
         // ignore parse errors
@@ -85,14 +87,21 @@ export class PiWebSocketClient {
     }
   }
 
-  sendPrompt(text: string, options: any = {}) {
+  sendPrompt(text: string, options: { model?: string; sessionId?: string; cwd?: string } = {}) {
     if (this.ws?.readyState === 1) {
       this.ws.send(JSON.stringify({
         type: 'prompt',
         text,
         model: options.model,
-        sessionId: options.sessionId
+        sessionId: options.sessionId,
+        cwd: options.cwd
       }));
+    }
+  }
+
+  listModels() {
+    if (this.ws?.readyState === 1) {
+      this.ws.send(JSON.stringify({ type: 'list-models' }));
     }
   }
 
