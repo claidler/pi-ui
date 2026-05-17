@@ -1,42 +1,74 @@
-# sv
+# pi-ui
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A clean, mobile-first web dashboard for the **Pi coding agent** ecosystem.
 
-## Creating a project
+Inspired by Claude Code Desktop and pipane, pi-ui gives you a beautiful, responsive interface to monitor and control your Pi coding agents from anywhere — especially from your phone.
 
-If you're seeing this, you've probably already done this step. Congrats!
+## ✨ Features (MVP)
 
-```sh
-# create a new project
-npx sv create my-app
-```
+- **Mobile-first design** — Full-screen chat experience on phones with a clean sessions modal
+- **Light theme** (dark mode coming later)
+- **Sessions list** with status indicators (thinking, connected, idle)
+- **Real-time style chat** with visible tool calls
+- **Model selector** per session
+- **Create / stop sessions** directly from the UI
+- **Automatic session switching** via sidebar (desktop) or modal (mobile)
 
-To recreate this project with the same configuration:
+## 🚀 Getting Started
 
-```sh
-# recreate this project
-pnpm dlx sv@0.15.3 create --template minimal --types ts --add tailwindcss="plugins:none" --install pnpm .
-```
+### Prerequisites
 
-## Developing
+- Node.js 18+
+- pnpm or npm
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+### Installation
 
-```sh
+```bash
+git clone https://github.com/claidler/pi-ui.git
+cd pi-ui
+npm install
 npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
 ```
 
-## Building
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-To create a production version of your app:
+### Production Build
 
-```sh
+```bash
 npm run build
 ```
 
-You can preview the production build with `npm run preview`.
+## 🧱 Tech Stack
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+- **SvelteKit** (Svelte 5 runes)
+- **Tailwind CSS**
+- **TypeScript**
+- Designed to work as a pure frontend (talks to Pi agents via WebSocket)
+
+## 📱 Mobile Experience
+
+- No persistent sidebar on mobile
+- Tap the list icon to open a full-screen sessions modal
+- Chat stays full screen and usable on phones
+- Input bar stays docked at the bottom
+
+## 🗺️ Roadmap
+
+- [ ] Dark mode
+- [ ] Real WebSocket connection to Pi coding agent
+- [ ] Auto-discovery of agents
+- [ ] Secure remote access (Tailscale / Cloudflare Tunnel integration)
+- [ ] Push notifications
+- [ ] File browser & code review tools
+
+## 🤝 Contributing
+
+This is currently a personal project, but contributions and ideas are welcome!
+
+## License
+
+MIT © [Chris Laidler](https://github.com/claidler)
+
+---
+
+**Built for the Pi coding agent community.**
