@@ -1,35 +1,82 @@
-<script>
-  import ChatMessage from '$lib/components/ChatMessage.svelte';
+<script lang="ts">
   import ChatInput from '$lib/components/ChatInput.svelte';
   import MessageList from '$lib/components/MessageList.svelte';
   import SessionList from '$lib/components/SessionList.svelte';
   import ModelSelector from '$lib/components/ModelSelector.svelte';
   import { piWs } from '$lib/services/pi-ws';
 
-  let sessions = $state([
-    { id: 1, name: "Refactor auth module", model: "github-copilot/claude-sonnet-4.5", status: "thinking" },
-    { id: 2, name: "Build landing page", model: "github-copilot/claude-sonnet-4.5", status: "idle" },
-    { id: 3, name: "Debug Pi agent connection", model: "github-copilot/claude-sonnet-4.5", status: "connected" }
-  ]);
+  interface Session {
+    id: string;
+    name: string;
+    path: string;
+    workspace: string;
+    model: string;
+    status: string;
+    createdAt: string;
+  }
 
-  let activeSessionId = $state(1);
+  interface Msg {
+    role: string;
+    content: string;
+    toolCallId?: string;
+    toolName?: string;
+  }
+
+  let sessions = $state<Session[]>([]);
+  let activeSessionId = $state<string | null>(null);
   let activeSession = $derived(sessions.find(s => s.id === activeSessionId));
-  
-  let messages = $state([
-    { role: "agent", content: "Hi! I'm connected to the pi coding agent. What would you like to work on?" }
-  ]);
 
+  let messages = $state<Msg[]>([]);
   let newMessage = $state("");
   let currentModel = $state("github-copilot/claude-sonnet-4.5");
   let showSessionsModal = $state(false);
   let isProcessing = $state(false);
   let showScrollButton = $state(false);
-  let messagesContainer;
+  let messagesContainer: HTMLDivElement | undefined = $state(undefined);
   let currentStreamingMessage = $state("");
+  let loadingSessions = $state(true);
+  let loadingMessages = $state(false);
 
-  function selectSession(id) {
+  async function loadSessions() {
+    loadingSessions = true;
+    try {
+      const res = await fetch('/api/sessions');
+      const data = await res.json();
+      sessions = data.sessions || [];
+      if (sessions.length > 0 && !activeSessionId) {
+        selectSession(sessions[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load sessions:', err);
+    } finally {
+      loadingSessions = false;
+    }
+  }
+
+  async function loadMessages(sessionId: string) {
+    loadingMessages = true;
+    try {
+      const session = sessions.find(s => s.id === sessionId);
+      if (!session) return;
+      if (!session.path) {
+        messages = [];
+        return;
+      }
+      const res = await fetch(`/api/sessions/${session.path}`);
+      const data = await res.json();
+      messages = data.messages || [];
+    } catch (err) {
+      console.error('Failed to load messages:', err);
+      messages = [];
+    } finally {
+      loadingMessages = false;
+    }
+  }
+
+  function selectSession(id: string) {
     activeSessionId = id;
     showSessionsModal = false;
+    loadMessages(id);
     setTimeout(scrollToBottom, 100);
   }
 
@@ -58,18 +105,18 @@
   }
 
   function createNewSession() {
-    const newId = Math.max(...sessions.map(s => s.id)) + 1;
-    sessions.push({ id: newId, name: "New session", model: currentModel, status: "idle" });
+    const newId = crypto.randomUUID();
+    sessions.unshift({
+      id: newId,
+      name: "New session",
+      path: '',
+      workspace: '',
+      model: currentModel,
+      status: "idle",
+      createdAt: new Date().toISOString()
+    });
     sessions = sessions;
     selectSession(newId);
-  }
-
-  function stopSession() {
-    if (activeSession) {
-      activeSession.status = "idle";
-    }
-    isProcessing = false;
-    sessions = [...sessions];
   }
 
   function toggleSessionsModal() {
@@ -108,9 +155,14 @@
     }
   });
 
+  // Load sessions on mount
+  $effect(() => {
+    loadSessions();
+  });
+
   // WebSocket streaming handlers
   $effect(() => {
-    const handleStream = (chunk) => {
+    const handleStream = (chunk: any) => {
       try {
         if (chunk?.type === 'text' && chunk.content) {
           currentStreamingMessage += chunk.content;
@@ -136,7 +188,7 @@
       }
     };
 
-    const handleError = (err) => {
+    const handleError = (err: any) => {
       try {
         console.error("[pi-ws] Error:", err);
         if (currentStreamingMessage) {
@@ -186,7 +238,7 @@
         </div>
         <div>
           <div class="font-semibold text-xl">pi-ui</div>
-          <div class="text-xs text-zinc-500">MVP</div>
+          <div class="text-xs text-zinc-500">{sessions.length} sessions</div>
         </div>
       </div>
       <button onclick={createNewSession} class="px-3 py-1.5 text-sm bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 rounded-2xl flex items-center gap-2">
@@ -202,11 +254,20 @@
 
     <div class="flex-1 overflow-auto p-2 min-h-0">
       <div class="text-xs text-zinc-500 px-3 py-2">Sessions</div>
-      <SessionList
-        {sessions}
-        {activeSessionId}
-        onSelect={selectSession}
-      />
+      {#if loadingSessions}
+        <div class="px-4 py-8 text-center text-sm text-zinc-400">
+          <div class="w-5 h-5 border-2 border-zinc-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-2"></div>
+          Loading sessions…
+        </div>
+      {:else if sessions.length === 0}
+        <div class="px-4 py-8 text-center text-sm text-zinc-400">No sessions found</div>
+      {:else}
+        <SessionList
+          {sessions}
+          {activeSessionId}
+          onSelect={selectSession}
+        />
+      {/if}
     </div>
   </div>
 
@@ -219,10 +280,10 @@
           <button onclick={toggleSessionsModal} class="md:hidden text-zinc-500 p-2 -ml-2">
             <i class="fa-solid fa-list text-xl"></i>
           </button>
-          <div>
+          <div class="min-w-0">
             <div class="font-semibold truncate">{activeSession.name}</div>
             <div class="flex items-center gap-2 text-xs text-zinc-500">
-              <ModelSelector bind:value={activeSession.model} />
+              <span class="truncate">{activeSession.workspace}</span>
               <span>• {activeSession.status}</span>
             </div>
           </div>
@@ -230,17 +291,38 @@
       </div>
 
       <!-- Messages Container -->
-      <MessageList
-        {messages}
-        {showScrollButton}
-        scrollToBottom={() => scrollToBottom()}
-        {handleScroll}
-        bind:messagesContainer
-        {currentStreamingMessage}
-      />
+      {#if loadingMessages}
+        <div class="flex-1 flex items-center justify-center bg-zinc-50">
+          <div class="text-center text-zinc-400">
+            <div class="w-6 h-6 border-2 border-zinc-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-3"></div>
+            <div class="text-sm">Loading messages…</div>
+          </div>
+        </div>
+      {:else if messages.length === 0}
+        <div class="flex-1 flex items-center justify-center bg-zinc-50">
+          <div class="text-center text-zinc-400 text-sm">No messages in this session yet</div>
+        </div>
+      {:else}
+        <MessageList
+          {messages}
+          {showScrollButton}
+          scrollToBottom={() => scrollToBottom()}
+          {handleScroll}
+          bind:messagesContainer
+          {currentStreamingMessage}
+        />
+      {/if}
 
       <!-- Input Bar -->
       <ChatInput bind:newMessage={newMessage} {isProcessing} {sendMessage} {stopProcessing} />
+    {:else}
+      <div class="flex-1 flex items-center justify-center bg-zinc-50">
+        <div class="text-center text-zinc-400">
+          <div class="text-4xl mb-4">🤖</div>
+          <div class="text-lg font-medium mb-1">pi-ui</div>
+          <div class="text-sm">Select a session to view messages</div>
+        </div>
+      </div>
     {/if}
   </div>
 </div>
@@ -253,11 +335,15 @@
         <div class="font-semibold">Sessions</div>
         <button onclick={toggleSessionsModal} class="text-zinc-500">Close</button>
       </div>
-      <SessionList
-        {sessions}
-        {activeSessionId}
-        onSelect={selectSession}
-      />
+      {#if loadingSessions}
+        <div class="py-8 text-center text-sm text-zinc-400">Loading…</div>
+      {:else}
+        <SessionList
+          {sessions}
+          {activeSessionId}
+          onSelect={selectSession}
+        />
+      {/if}
     </div>
   </div>
 {/if}

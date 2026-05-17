@@ -1,5 +1,4 @@
 <script>
-  /** @type {string} */
   let { newMessage = $bindable(''), isProcessing, sendMessage, stopProcessing } = $props();
 </script>
 

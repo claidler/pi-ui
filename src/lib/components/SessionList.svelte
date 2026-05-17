@@ -1,5 +1,4 @@
 <script>
-  /** @type {Array<any>} */
   let { sessions, activeSessionId, onSelect, showStatus = true } = $props();
 </script>
 

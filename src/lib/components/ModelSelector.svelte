@@ -1,6 +1,5 @@
 <script>
-  /** @type {string} */
-  let { value = $bindable(''), onChange } = $props();
+  let { value = $bindable(''), onChange = undefined } = $props();
 
   const models = [
     'claude-3.5-sonnet',

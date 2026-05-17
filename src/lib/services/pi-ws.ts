@@ -5,13 +5,17 @@ export class PiWebSocketClient {
   private ws: WebSocket | null = null;
   private listeners: Map<string, Function[]> = new Map();
   private connected = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private url: string = 'ws://localhost:8643';
+  private hasLoggedError = false;
 
   connect(url: string = 'ws://localhost:8643') {
+    this.url = url;
     if (this.ws) this.disconnect();
     this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
-      console.log('[pi-ws] Connected');
+      this.hasLoggedError = false;
       this.connected = true;
       this.emit('open');
     };
@@ -22,19 +26,24 @@ export class PiWebSocketClient {
         if (msg.type === 'stream' && msg.data) {
           this.handlePiEvent(msg.data);
         }
-      } catch (e) {
-        console.warn('[pi-ws] Parse error');
+      } catch {
+        // ignore parse errors
       }
     };
 
     this.ws.onclose = () => {
-      console.log('[pi-ws] Disconnected');
       this.connected = false;
       this.emit('close');
+      // Auto-reconnect after 3s
+      if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = setTimeout(() => this.connect(this.url), 3000);
     };
 
-    this.ws.onerror = (err) => {
-      console.error('[pi-ws] Error:', err);
+    this.ws.onerror = () => {
+      if (!this.hasLoggedError) {
+        console.warn('[pi-ws] Connection failed — is the bridge running? (npm run bridge)');
+        this.hasLoggedError = true;
+      }
     };
   }
 
@@ -121,6 +130,10 @@ export class PiWebSocketClient {
   }
 
   disconnect() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.ws) {
       this.ws.close();
       this.ws = null;

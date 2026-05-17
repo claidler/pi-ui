@@ -1,7 +1,6 @@
 <script>
   import ChatMessage from './ChatMessage.svelte';
 
-  /** @type {Array<{role: string, content: string}>} */
   let { 
     messages, 
     showScrollButton, 

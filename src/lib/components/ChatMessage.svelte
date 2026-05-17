@@ -1,11 +1,10 @@
 <script>
-  /** @type {{ role: string, content: string }} */
   let { msg } = $props();
 </script>
 
 <div class="flex {msg.role === 'user' ? 'justify-end' : ''}">
   <div
-    class="max-w-[80%] px-4 py-3 rounded-3xl text-sm {msg.role === 'user'
+    class="max-w-[80%] px-4 py-3 rounded-3xl text-sm break-words whitespace-pre-wrap {msg.role === 'user'
       ? 'bg-blue-600 text-white'
       : 'bg-white border border-zinc-200'}"
   >
