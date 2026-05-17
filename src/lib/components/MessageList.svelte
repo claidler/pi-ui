@@ -25,7 +25,7 @@
   {#if showScrollButton}
     <button
       onclick={scrollToBottom}
-      class="fixed bottom-20 left-1/2 -translate-x-1/2 w-10 h-10 bg-white border border-zinc-300 shadow-lg rounded-full flex items-center justify-center text-blue-600 hover:bg-zinc-50 transition-all active:scale-95 z-40"
+      class="fixed bottom-20 right-6 md:right-8 w-10 h-10 bg-white border border-zinc-300 shadow-lg rounded-full flex items-center justify-center text-blue-600 hover:bg-zinc-50 transition-all active:scale-95 z-40"
     >
       <i class="fa-solid fa-arrow-down"></i>
     </button>
