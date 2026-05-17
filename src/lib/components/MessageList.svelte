@@ -2,7 +2,13 @@
   import ChatMessage from './ChatMessage.svelte';
 
   /** @type {Array<{role: string, content: string}>} */
-  let { messages, showScrollButton, scrollToBottom, handleScroll, messagesContainer } = $props();
+  let { 
+    messages, 
+    showScrollButton, 
+    scrollToBottom, 
+    handleScroll, 
+    messagesContainer = $bindable() 
+  } = $props();
 </script>
 
 <!-- Messages Container -->
