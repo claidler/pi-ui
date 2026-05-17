@@ -1,4 +1,5 @@
 <script>
+  import ChatMessage from '$lib/components/ChatMessage.svelte';
   let sessions = $state([
     { id: 1, name: "Refactor auth module", model: "claude-3.5-sonnet", status: "thinking" },
     { id: 2, name: "Build landing page", model: "gpt-4o", status: "idle" },
@@ -180,14 +181,7 @@
         class="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-zinc-50 min-h-0 relative"
       >
         {#each messages as msg}
-          <div class="flex {msg.role === 'user' ? 'justify-end' : ''}">
-            <div class="max-w-[80%] px-4 py-3 rounded-3xl text-sm {msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-zinc-200'}">
-              {#if msg.role === 'tool'}
-                <div class="text-amber-600 text-xs font-mono mb-1">TOOL CALL</div>
-              {/if}
-              {msg.content}
-            </div>
-          </div>
+          <ChatMessage {msg} />
         {/each}
 
         <!-- Scroll to Bottom Button -->
