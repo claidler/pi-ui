@@ -7,7 +7,12 @@
   <div class="flex items-center gap-2 bg-white border border-zinc-300 rounded-3xl px-4 py-2">
     <input
       bind:value={newMessage}
-      onkeydown={e => e.key === 'Enter' && !isProcessing && sendMessage()}
+      onkeydown={(e) => {
+        if (e.key === 'Enter' && !isProcessing) {
+          e.preventDefault();
+          sendMessage();
+        }
+      }}
       type="text"
       placeholder={isProcessing ? "Agent is thinking..." : "Message the agent..."}
       class="flex-1 outline-none text-sm bg-transparent"

@@ -7,7 +7,8 @@
     showScrollButton, 
     scrollToBottom, 
     handleScroll, 
-    messagesContainer = $bindable() 
+    messagesContainer = $bindable(),
+    currentStreamingMessage = ''
   } = $props();
 </script>
 
@@ -20,6 +21,10 @@
   {#each messages as msg}
     <ChatMessage {msg} />
   {/each}
+
+  {#if currentStreamingMessage}
+    <ChatMessage msg={{ role: 'agent', content: currentStreamingMessage }} />
+  {/if}
 
   <!-- Scroll to Bottom Button -->
   {#if showScrollButton}

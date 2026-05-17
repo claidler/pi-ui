@@ -3,42 +3,33 @@
   import ChatInput from '$lib/components/ChatInput.svelte';
   import MessageList from '$lib/components/MessageList.svelte';
   import SessionList from '$lib/components/SessionList.svelte';
-  import { sendMessageToHermes, streamMessageFromHermes } from '$lib/services/hermes';
   import ModelSelector from '$lib/components/ModelSelector.svelte';
+  import { piWs } from '$lib/services/pi-ws';
+
   let sessions = $state([
-    { id: 1, name: "Refactor auth module", model: "claude-3.5-sonnet", status: "thinking" },
-    { id: 2, name: "Build landing page", model: "gpt-4o", status: "idle" },
-    { id: 3, name: "Debug Pi agent connection", model: "claude-3.5-sonnet", status: "connected" }
+    { id: 1, name: "Refactor auth module", model: "github-copilot/claude-sonnet-4.5", status: "thinking" },
+    { id: 2, name: "Build landing page", model: "github-copilot/claude-sonnet-4.5", status: "idle" },
+    { id: 3, name: "Debug Pi agent connection", model: "github-copilot/claude-sonnet-4.5", status: "connected" }
   ]);
 
   let activeSessionId = $state(1);
   let activeSession = $derived(sessions.find(s => s.id === activeSessionId));
   
   let messages = $state([
-    { role: "agent", content: "Starting task: Refactor auth module..." },
-    { role: "agent", content: "Analyzing current auth implementation..." },
-    { role: "tool", content: "Reading file: src/lib/auth.ts" },
-    { role: "agent", content: "Found the issue. The current auth uses JWT but doesn't handle token refresh properly." },
-    { role: "tool", content: "Reading file: src/lib/auth/refresh.ts" },
-    { role: "agent", content: "I see the problem. The refresh token logic is incomplete." },
-    { role: "user", content: "Can you fix the refresh logic?" },
-    { role: "agent", content: "Yes, I'll implement a proper token refresh mechanism with retry logic." },
-    { role: "tool", content: "Writing changes to src/lib/auth/refresh.ts" },
-    { role: "agent", content: "Changes applied. Now testing the new refresh flow..." },
-    { role: "agent", content: "All tests passing. Ready to commit the changes." }
+    { role: "agent", content: "Hi! I'm connected to the pi coding agent. What would you like to work on?" }
   ]);
 
   let newMessage = $state("");
-  let currentModel = $state("claude-3.5-sonnet");
+  let currentModel = $state("github-copilot/claude-sonnet-4.5");
   let showSessionsModal = $state(false);
   let isProcessing = $state(false);
   let showScrollButton = $state(false);
   let messagesContainer;
+  let currentStreamingMessage = $state("");
 
   function selectSession(id) {
     activeSessionId = id;
     showSessionsModal = false;
-    // Scroll to bottom when switching sessions
     setTimeout(scrollToBottom, 100);
   }
 
@@ -49,41 +40,21 @@
     messages = [...messages, { role: "user", content: userMessage }];
     newMessage = "";
     isProcessing = true;
+    currentStreamingMessage = "";
 
-    // Start with an empty assistant message that we'll stream into
-    const assistantIndex = messages.length;
-    messages = [...messages, { role: "agent", content: "" }];
-
-    try {
-      let fullResponse = "";
-      
-      for await (const chunk of streamMessageFromHermes(
-        messages.slice(0, -1).map(m => ({ role: m.role as any, content: m.content })),
-        { model: currentModel }
-      )) {
-        const delta = chunk.choices?.[0]?.delta?.content || "";
-        if (delta) {
-          fullResponse += delta;
-          // Update the last message in place
-          messages[assistantIndex] = { role: "agent", content: fullResponse };
-          messages = [...messages]; // trigger reactivity
-        }
-      }
-    } catch (error) {
-      console.error("Hermes streaming error:", error);
-      messages[assistantIndex] = { 
-        role: "agent", 
-        content: "Sorry, I couldn't reach the agent. Please check if Hermes is running." 
-      };
-      messages = [...messages];
-    } finally {
-      isProcessing = false;
-      scrollToBottom();
-    }
+    piWs.sendPrompt(userMessage, { 
+      model: currentModel,
+      sessionId: activeSessionId 
+    });
   }
 
   function stopProcessing() {
+    piWs.stop();
     isProcessing = false;
+    if (currentStreamingMessage) {
+      messages = [...messages, { role: "agent", content: currentStreamingMessage }];
+      currentStreamingMessage = "";
+    }
   }
 
   function createNewSession() {
@@ -96,9 +67,9 @@
   function stopSession() {
     if (activeSession) {
       activeSession.status = "idle";
-      isProcessing = false;
-      sessions = [...sessions];
     }
+    isProcessing = false;
+    sessions = [...sessions];
   }
 
   function toggleSessionsModal() {
@@ -124,7 +95,6 @@
     showScrollButton = !isNearBottom;
   }
 
-  // Auto-scroll to bottom when new messages are added
   $effect(() => {
     if (messages.length > 0 && messagesContainer) {
       const { scrollTop, scrollHeight, clientHeight } = messagesContainer;
@@ -136,6 +106,72 @@
         showScrollButton = true;
       }
     }
+  });
+
+  // WebSocket streaming handlers
+  $effect(() => {
+    const handleStream = (chunk) => {
+      try {
+        if (chunk?.type === 'text' && chunk.content) {
+          currentStreamingMessage += chunk.content;
+        } else if (chunk?.type === 'status') {
+          console.log('[pi-ws] Status:', chunk.content);
+        }
+      } catch (e) {
+        console.error('[pi-ws] Stream handler error:', e);
+      }
+    };
+
+    const handleDone = () => {
+      try {
+        if (currentStreamingMessage.trim()) {
+          messages = [...messages, { role: "agent", content: currentStreamingMessage.trim() }];
+          currentStreamingMessage = "";
+        }
+        isProcessing = false;
+        scrollToBottom();
+      } catch (e) {
+        console.error('[pi-ws] Done handler error:', e);
+        isProcessing = false;
+      }
+    };
+
+    const handleError = (err) => {
+      try {
+        console.error("[pi-ws] Error:", err);
+        if (currentStreamingMessage) {
+          messages = [...messages, { role: "agent", content: currentStreamingMessage }];
+          currentStreamingMessage = "";
+        }
+        messages = [...messages, { 
+          role: "agent", 
+          content: "Error from pi coding agent." 
+        }];
+        isProcessing = false;
+      } catch (e) {
+        console.error('[pi-ws] Error handler error:', e);
+        isProcessing = false;
+      }
+    };
+
+    piWs.on('stream', handleStream);
+    piWs.on('done', handleDone);
+    piWs.on('error', handleError);
+
+    // Auto-connect with smart URL (supports LAN/mobile access)
+    if (!piWs.isConnected?.()) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.hostname;
+      const wsUrl = `${protocol}//${host}:8643`;
+      console.log('[pi-ws] Connecting to', wsUrl);
+      piWs.connect(wsUrl);
+    }
+
+    return () => {
+      piWs.off('stream', handleStream);
+      piWs.off('done', handleDone);
+      piWs.off('error', handleError);
+    };
   });
 </script>
 
@@ -200,6 +236,7 @@
         scrollToBottom={() => scrollToBottom()}
         {handleScroll}
         bind:messagesContainer
+        {currentStreamingMessage}
       />
 
       <!-- Input Bar -->
@@ -210,22 +247,17 @@
 
 <!-- Mobile Sessions Modal -->
 {#if showSessionsModal}
-  <div class="fixed inset-0 bg-black/40 z-50 md:hidden flex items-end" onclick={toggleSessionsModal}>
-    <div class="bg-white w-full rounded-t-3xl max-h-[65vh] flex flex-col" onclick={e => e.stopPropagation()}>
-      <div class="p-4 flex justify-between items-center border-b">
-        <div class="font-semibold text-lg">Sessions</div>
-        <button onclick={toggleSessionsModal} class="text-3xl leading-none">×</button>
+  <div class="md:hidden fixed inset-0 bg-black/50 z-50 flex items-end" onclick={toggleSessionsModal}>
+    <div class="bg-white w-full rounded-t-3xl p-4 max-h-[70vh] overflow-auto" onclick={(e) => e.stopPropagation()}>
+      <div class="flex justify-between items-center mb-4">
+        <div class="font-semibold">Sessions</div>
+        <button onclick={toggleSessionsModal} class="text-zinc-500">Close</button>
       </div>
-      <div class="overflow-auto flex-1 p-2">
-        <SessionList
-          {sessions}
-          {activeSessionId}
-          onSelect={(id) => { selectSession(id); toggleSessionsModal(); }}
-        />
-      </div>
-      <div class="p-4 border-t">
-        <button onclick={createNewSession} class="w-full py-3 bg-blue-600 text-white rounded-2xl font-medium">+ New Session</button>
-      </div>
+      <SessionList
+        {sessions}
+        {activeSessionId}
+        onSelect={selectSession}
+      />
     </div>
   </div>
 {/if}
