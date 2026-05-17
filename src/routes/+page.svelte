@@ -118,8 +118,8 @@
         </button>
       </div>
 
-      <!-- Messages -->
-      <div class="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-zinc-50">
+      <!-- Messages - Scrollable -->
+      <div class="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-zinc-50 min-h-0">
         {#each messages as msg}
           <div class="flex {msg.role === 'user' ? 'justify-end' : ''}">
             <div class="max-w-[80%] px-4 py-3 rounded-3xl text-sm {msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-zinc-200'}">
