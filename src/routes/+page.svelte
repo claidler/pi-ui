@@ -3,6 +3,7 @@
   import ChatInput from '$lib/components/ChatInput.svelte';
   import MessageList from '$lib/components/MessageList.svelte';
   import SessionList from '$lib/components/SessionList.svelte';
+  import ModelSelector from '$lib/components/ModelSelector.svelte';
   let sessions = $state([
     { id: 1, name: "Refactor auth module", model: "claude-3.5-sonnet", status: "thinking" },
     { id: 2, name: "Build landing page", model: "gpt-4o", status: "idle" },
@@ -133,11 +134,7 @@
 
     <div class="p-4 border-b">
       <div class="text-xs text-zinc-500 mb-1">Model</div>
-      <select bind:value={currentModel} class="w-full border border-zinc-300 rounded-2xl px-3 py-2 text-sm">
-        <option value="claude-3.5-sonnet">claude-3.5-sonnet</option>
-        <option value="gpt-4o">gpt-4o</option>
-        <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-      </select>
+      <ModelSelector bind:value={currentModel} />
     </div>
 
     <div class="flex-1 overflow-auto p-2 min-h-0">
@@ -161,7 +158,10 @@
           </button>
           <div>
             <div class="font-semibold truncate">{activeSession.name}</div>
-            <div class="text-xs text-zinc-500">{activeSession.model} • {activeSession.status}</div>
+            <div class="flex items-center gap-2 text-xs text-zinc-500">
+              <ModelSelector bind:value={activeSession.model} />
+              <span>• {activeSession.status}</span>
+            </div>
           </div>
         </div>
       </div>
