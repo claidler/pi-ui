@@ -2,6 +2,7 @@
   import ChatMessage from '$lib/components/ChatMessage.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
   import MessageList from '$lib/components/MessageList.svelte';
+  import SessionList from '$lib/components/SessionList.svelte';
   let sessions = $state([
     { id: 1, name: "Refactor auth module", model: "claude-3.5-sonnet", status: "thinking" },
     { id: 2, name: "Build landing page", model: "gpt-4o", status: "idle" },
@@ -141,22 +142,11 @@
 
     <div class="flex-1 overflow-auto p-2 min-h-0">
       <div class="text-xs text-zinc-500 px-3 py-2">Sessions</div>
-      {#each sessions as session}
-        <button onclick={() => selectSession(session.id)} 
-                class="w-full px-4 py-3 text-left rounded-2xl mb-1 hover:bg-zinc-100 flex justify-between items-center {activeSessionId === session.id ? 'bg-zinc-100 border border-zinc-300' : ''}">
-          <div>
-            <div class="font-medium text-sm">{session.name}</div>
-            <div class="text-xs text-zinc-500">{session.model}</div>
-          </div>
-          {#if session.status === 'thinking'}
-            <div class="flex items-center h-full">
-              <div class="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-            </div>
-          {:else if session.status === 'connected'}
-            <div class="w-2 h-2 bg-emerald-500 rounded-full"></div>
-          {/if}
-        </button>
-      {/each}
+      <SessionList
+        {sessions}
+        {activeSessionId}
+        onSelect={selectSession}
+      />
     </div>
   </div>
 
@@ -200,19 +190,11 @@
         <button onclick={toggleSessionsModal} class="text-3xl leading-none">×</button>
       </div>
       <div class="overflow-auto flex-1 p-2">
-        {#each sessions as session}
-          <button onclick={() => selectSession(session.id)} class="w-full px-4 py-4 text-left flex justify-between items-center hover:bg-zinc-100 rounded-2xl {activeSessionId === session.id ? 'bg-zinc-100' : ''}">
-            <div>
-              <div class="font-medium">{session.name}</div>
-              <div class="text-xs text-zinc-500">{session.model}</div>
-            </div>
-            {#if session.status === 'thinking'}
-              <div class="flex items-center h-full">
-                <div class="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-              </div>
-            {/if}
-          </button>
-        {/each}
+        <SessionList
+          {sessions}
+          {activeSessionId}
+          onSelect={(id) => { selectSession(id); toggleSessionsModal(); }}
+        />
       </div>
       <div class="p-4 border-t">
         <button onclick={createNewSession} class="w-full py-3 bg-blue-600 text-white rounded-2xl font-medium">+ New Session</button>
