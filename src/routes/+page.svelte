@@ -3,6 +3,7 @@
   import ChatInput from '$lib/components/ChatInput.svelte';
   import MessageList from '$lib/components/MessageList.svelte';
   import SessionList from '$lib/components/SessionList.svelte';
+  import { sendMessageToHermes } from '$lib/services/hermes';
   import ModelSelector from '$lib/components/ModelSelector.svelte';
   let sessions = $state([
     { id: 1, name: "Refactor auth module", model: "claude-3.5-sonnet", status: "thinking" },
@@ -41,18 +42,32 @@
     setTimeout(scrollToBottom, 100);
   }
 
-  function sendMessage() {
+  async function sendMessage() {
     if (!newMessage.trim()) return;
-    
-    messages = [...messages, { role: "user", content: newMessage }];
+
+    const userMessage = newMessage.trim();
+    messages = [...messages, { role: "user", content: userMessage }];
     newMessage = "";
     isProcessing = true;
 
-    setTimeout(() => {
-      messages = [...messages, { role: "agent", content: "Got it. Working on that now..." }];
+    try {
+      const response = await sendMessageToHermes(
+        messages.map(m => ({ role: m.role as any, content: m.content })),
+        { model: currentModel }
+      );
+
+      const assistantMessage = response.choices?.[0]?.message?.content || "No response from agent.";
+      messages = [...messages, { role: "agent", content: assistantMessage }];
+    } catch (error) {
+      console.error("Hermes error:", error);
+      messages = [...messages, { 
+        role: "agent", 
+        content: "Sorry, I couldn't reach the agent. Please check if Hermes is running." 
+      }];
+    } finally {
       isProcessing = false;
       scrollToBottom();
-    }, 1200);
+    }
   }
 
   function stopProcessing() {
